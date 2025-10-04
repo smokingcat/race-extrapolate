@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Race Extrapolate</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="description" content="Compute running pace and extrapolate race times.">
+  </head>
+  <body class="min-h-screen bg-gray-50 text-gray-900">
+    <header class="px-4 sm:px-6 lg:px-8 py-6">
+      <div class="max-w-2xl mx-auto flex items-center justify-between">
+        <h1 class="text-xl font-semibold">Race Extrapolate</h1>
+      </div>
+    </header>
+
+    <main class="px-4 sm:px-6 lg:px-8 pb-16">
+      <div class="max-w-2xl mx-auto">
+        <section class="bg-white shadow-sm ring-1 ring-black/5 rounded-xl p-5 sm:p-6">
+          <h2 class="text-lg font-medium mb-4">Input</h2>
+          <form id="pace-form" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="col-span-1">
+              <label for="distance" class="block text-sm font-medium mb-1">Distance</label>
+              <div class="flex gap-2">
+                <input id="distance" name="distance" type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 5" class="w-full rounded-lg border-gray-300 focus:border-gray-400 focus:ring-gray-400" required>
+                <select id="distance-unit" class="rounded-lg border-gray-300 focus:border-gray-400 focus:ring-gray-400">
+                  <option value="km">km</option>
+                  <option value="mi">mi</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="col-span-1">
+              <label class="block text-sm font-medium mb-1">Time</label>
+              <div class="grid grid-cols-3 gap-2 items-center">
+                <input id="hours" type="number" inputmode="numeric" min="0" step="1" placeholder="hh" class="w-full rounded-lg border-gray-300 focus:border-gray-400 focus:ring-gray-400">
+                <input id="minutes" type="number" inputmode="numeric" min="0" step="1" placeholder="mm" class="w-full rounded-lg border-gray-300 focus:border-gray-400 focus:ring-gray-400">
+                <input id="seconds" type="number" inputmode="numeric" min="0" max="59" step="1" placeholder="ss" class="w-full rounded-lg border-gray-300 focus:border-gray-400 focus:ring-gray-400">
+              </div>
+              <p class="text-xs text-gray-500 mt-1">You can leave hours empty.</p>
+            </div>
+
+            <div class="sm:col-span-2 flex items-center justify-end gap-3 pt-2">
+              <div class="flex gap-2">
+                <button type="submit" class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-black">Calculate</button>
+              </div>
+            </div>
+          </form>
+        </section>
+
+        <section class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div class="bg-white shadow-sm ring-1 ring-black/5 rounded-xl p-5 sm:p-6">
+            <h3 class="text-base font-medium mb-2">Pace</h3>
+            <div id="pace" class="text-3xl font-semibold tracking-tight">—</div>
+            <p class="text-xs text-gray-500 mt-1">Minutes per 1 km.</p>
+          </div>
+
+          <div class="bg-white shadow-sm ring-1 ring-black/5 rounded-xl p-5 sm:p-6">
+            <h3 class="text-base font-medium mb-2">Extrapolated Races</h3>
+            <dl id="races" class="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+              <!-- Filled by JS -->
+            </dl>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="px-4 sm:px-6 lg:px-8 pb-10">
+      <div class="max-w-2xl mx-auto text-center text-xs text-gray-500">Made with 🌞 in Marseille, Fr</div>
+    </footer>
+
+    <script>
+      const KM_PER_MILE = 1.609344;
+
+      const raceDefs = [
+        { key: '3k', label: '3 km', km: 3 },
+        { key: '5k', label: '5 km', km: 5 },
+        { key: '10k', label: '10 km', km: 10 },
+        { key: '10mi', label: '10 miles', km: 10 * KM_PER_MILE },
+        { key: 'hm', label: 'Half Marathon', km: 21.0975 },
+        { key: 'm', label: 'Marathon', km: 42.195 },
+      ];
+
+      function toSeconds(hours, minutes, seconds) {
+        const h = Number(hours) || 0;
+        const m = Number(minutes) || 0;
+        const s = Number(seconds) || 0;
+        return h * 3600 + m * 60 + s;
+      }
+
+      function formatPace(secondsPerKm) {
+        if (!isFinite(secondsPerKm) || secondsPerKm <= 0) return '—';
+        const minutes = Math.floor(secondsPerKm / 60);
+        const seconds = Math.round(secondsPerKm % 60);
+        const padded = String(seconds).padStart(2, '0');
+        return `${minutes}:${padded} / km`;
+      }
+
+      function formatDuration(totalSeconds) {
+        if (!isFinite(totalSeconds) || totalSeconds <= 0) return '—';
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = Math.round(totalSeconds % 60);
+        const mm = String(minutes).padStart(2, '0');
+        const ss = String(seconds).padStart(2, '0');
+        return hours > 0 ? `${hours}:${mm}:${ss}` : `${minutes}:${ss}`;
+      }
+
+      function computePaceSeconds(distance, unit, totalSeconds) {
+        const distanceKm = unit === 'mi' ? distance * KM_PER_MILE : distance;
+        if (!distanceKm || distanceKm <= 0 || !totalSeconds) return NaN;
+        return totalSeconds / distanceKm;
+      }
+
+      function renderRaces(secondsPerKm) {
+        const container = document.getElementById('races');
+        container.innerHTML = '';
+        raceDefs.forEach(r => {
+          const total = secondsPerKm * r.km;
+          const dt = document.createElement('dt');
+          dt.className = 'text-gray-500';
+          dt.textContent = r.label;
+          const dd = document.createElement('dd');
+          dd.className = 'text-gray-900 font-medium text-right';
+          dd.textContent = formatDuration(total);
+          container.appendChild(dt);
+          container.appendChild(dd);
+        });
+      }
+
+      function handleCalculate(e) {
+        e.preventDefault();
+        const distance = parseFloat(document.getElementById('distance').value);
+        const unit = document.getElementById('distance-unit').value;
+        const hours = document.getElementById('hours').value;
+        const minutes = document.getElementById('minutes').value;
+        const seconds = document.getElementById('seconds').value;
+
+        const totalSeconds = toSeconds(hours, minutes, seconds);
+        const paceSeconds = computePaceSeconds(distance, unit, totalSeconds);
+
+        document.getElementById('pace').textContent = formatPace(paceSeconds);
+        renderRaces(paceSeconds);
+      }
+
+      document.getElementById('pace-form').addEventListener('submit', handleCalculate);
+
+      // Initialize with blank state
+      renderRaces(NaN);
+    </script>
+  </body>
+  </html>
+
+
